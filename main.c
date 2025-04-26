@@ -1,15 +1,24 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include "processo.h"
 
 #define NOME_ARQUIVO "processo_043_202409032338.csv"
 
+void limpa_chaves(char *str) {
+    int len = strlen(str);
+    if (str[0] == '{') {
+        memmove(str, str + 1, len - 1);
+        str[len - 2] = '\0';  // remove a chave final
+    }
+}
+
 int main() {
-    Processo *processos = malloc(MAX_PROCESSOS * sizeof(Processo));
-    if(!processos){
-        printf("Erro: Falha ao alocar memória para os processos.\n");
-        return 1; // Retorna erro se não conseguir alocar memória       
-    }  
+    Processo *processos = malloc(sizeof(Processo) * MAX_PROCESSOS);
+    if (processos == NULL) {
+        printf("Erro ao alocar memória!\n");
+        return 1;  // Se não conseguir alocar, sai do programa
+    }
 
     int total = 0;  
     int opcao;  
@@ -17,6 +26,7 @@ int main() {
     // Carrega o arquivo e verifica se houve erro
     if (!ler_arquivo(processos, &total, NOME_ARQUIVO)) {    
         printf("Erro: Nenhum processo foi carregado. Verifique se o arquivo '%s' existe e tem permissões adequadas.\n", NOME_ARQUIVO);
+        free(processos);  // Libera a memória antes de sair
         return 1;  
     } 
 
@@ -43,95 +53,77 @@ int main() {
         
         if (tentativas == 0) {  // Excede o número de tentativas
             printf("Erro: Número máximo de tentativas excedido. Encerrando o programa.\n");
+            free(processos);  // Libera a memória antes de sair
             return 1;
         }
 
-        // Executa a opção escolhida
-        switch(opcao) {
+        switch (opcao) {
             case 1:
                 ordenar_por_id(processos, total);
-                printf("Primeiros 5 processos após ordenação:\n");
+                salvar_processos_csv(processos, total, "processos_ordenados.csv");
+                printf("Primeiros 5 processos após ordenação por ID:\n");
                 for (int i = 0; i < 5 && i < total; i++) {
                     printf("ID: %d | Número: %s\n", processos[i].id, processos[i].numero);
                 }
                 break;
-                
+
             case 2:
                 ordenar_por_data(processos, total);
-                printf("Primeiros 5 processos após ordenação:\n");
+                salvar_processos_csv(processos, total, "processos_ordenados_data.csv");
+                printf("Primeiros 5 processos após ordenação por data:\n");
                 for (int i = 0; i < 5 && i < total; i++) {
                     printf("Data: %s | ID: %d\n", processos[i].data_ajuizamento, processos[i].id);
                 }
                 break;
-                
+
             case 3: {
-                int classe;
+                int id;
                 printf("Digite o id_classe: ");
-                if (scanf("%d", &classe) != 1) {
-                    printf("Erro: Entrada inválida para id_classe.\n");
-                    while (getchar() != '\n'); // Limpa o buffer
-                    break;
+                if (scanf("%d", &id) == 1) {
+                    int c = contar_por_classe(processos, total, id);
+                    printf("Total de processos com id_classe %d: %d\n", id, c);
+                } else {
+                    printf("Entrada inválida.\n");
                 }
-                int count = contar_por_classe(processos, total, classe);
-                printf("Total de processos com id_classe %d: %d\n", classe, count);
                 break;
             }
-            
+
             case 4: {
-                int totalAssuntos = contar_assuntos_unicos(processos, total);
-                if (totalAssuntos >= 0) {
-                    printf("Total de assuntos únicos: %d\n", totalAssuntos);
-                }
+                int unicos = contar_assuntos_unicos(processos, total);
+                printf("Total de assuntos únicos: %d\n", unicos);
                 break;
             }
-            
+
             case 5:
                 listar_multiplos_assuntos(processos, total);
                 break;
-                
+
             case 6: {
                 int index;
-                int tentativas = 3;  // Tentativas para entrada inválida
-                while (tentativas > 0) {
-                    printf("Digite o índice do processo (entre 0 e %d): ", total - 1);
-                    if (scanf("%d", &index) == 1) {
-                        if (index >= 0 && index < total) {
-                            int dias = dias_em_tramitacao(processos[index].data_ajuizamento);
-                            if (dias >= 0) {
-                                printf("O processo %s está em tramitação há %d dias.\n", 
-                                       processos[index].numero, dias);
-                            } else {
-                                printf("Erro ao calcular os dias em tramitação para o processo de índice %d.\n", index);
-                            }
-                            break;
-                        } else {
-                            printf("Erro: Índice fora do intervalo válido (0 a %d).\n", total - 1);
-                        }
+                printf("Digite o índice do processo (0 a %d): ", total - 1);
+                if (scanf("%d", &index) == 1 && index >= 0 && index < total) {
+                    int dias = dias_em_tramitacao(processos[index].data_ajuizamento);
+                    if (dias >= 0) {
+                        printf("Dias em tramitação: %d\n", dias);
                     } else {
-                        printf("Erro: Entrada inválida! Certifique-se de digitar um número.\n");
-                        while (getchar() != '\n'); // Limpa o buffer
+                        printf("Erro ao calcular dias.\n");
                     }
-                    printf("Você tem %d tentativa(s) restante(s).\n", --tentativas);
-                }
-                if (tentativas == 0) {  // Excede o número de tentativas
-                    printf("Número máximo de tentativas excedido. Voltando ao menu principal.\n");
+                } else {
+                    printf("Índice inválido.\n");
                 }
                 break;
             }
-            
+
             case 0:
-                // Encerra o programa
-                printf("\n=============================\n");
-                printf("Programa encerrado. Obrigado por utilizar o sistema!\n");
-                printf("=============================\n\n");
+                printf("Encerrando o programa...\n");
                 break;
-                
+
             default:
-                printf("Opção inválida! Escolha um número entre 0 e 6.\n"); // Opção não reconhecida
+                printf("Opção inválida.\n");
         }
 
-    } while(opcao != 0);  // Continua até o usuário escolher sair
+    } while (opcao != 0);
 
+    free(processos);  // Libera a memória antes de sair
     return 0;
-    free(processos);  
 }

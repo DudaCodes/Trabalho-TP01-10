@@ -1,56 +1,67 @@
+#include "processo.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "processo.h"
 
-int ler_arquivo(Processo processos[], int *total, const char* nome_arquivo) {
-    FILE *arquivo = fopen("processo_043_202409032338.csv", "r");
-    if (!arquivo) {
-        printf("Erro ao abrir o arquivo.\n");
-        return 0;
+int ler_arquivo(Processo *processos, int *total, const char* nome_arquivo) {
+    FILE *arquivo = fopen(nome_arquivo, "r");
+    if (arquivo == NULL) {
+        printf("Erro ao abrir o arquivo: %s\n", nome_arquivo);
+        return 0; // Retorna 0 em caso de erro
     }
 
-    char linha[512];
+    char linha[1024];
     *total = 0;
     fgets(linha, sizeof(linha), arquivo); // Ignora cabeçalho
 
     while (fgets(linha, sizeof(linha), arquivo)) {
-        if (*total >= MAX_PROCESSOS) {    // verifica o limite
+        if (*total >= MAX_PROCESSOS) {    // Verifica o limite
             printf("Aviso: Limite máximo de processos atingido.\n");
             break;
         }
 
         char *token = strtok(linha, ",");
+        if (!token) continue;
         processos[*total].id = atoi(token);
 
         token = strtok(NULL, ",");
-        strcpy(processos[*total].numero, token);
+        if (!token) continue;
+        strncpy(processos[*total].numero, token, MAX_STR - 1);
+        processos[*total].numero[MAX_STR - 1] = '\0';
 
         token = strtok(NULL, ",");
-        strcpy(processos[*total].data_ajuizamento, token);
+        if (!token) continue;
+        strncpy(processos[*total].data_ajuizamento, token, MAX_STR - 1);
+        processos[*total].data_ajuizamento[MAX_STR - 1] = '\0';
 
         token = strtok(NULL, ",");
-        processos[*total].id_classe = atoi(token + 1); // pula '{'
-
-        token = strtok(NULL, ",");
-        processos[*total].qtd_assuntos = 0;
-        char *ptr = strtok(token, "{}");
-        while (ptr && processos[*total].qtd_assuntos < MAX_ASSUNTOS) {
-            processos[*total].id_assunto[processos[*total].qtd_assuntos++] = atoi(ptr);
-            ptr = strtok(NULL, "{}");
+        if (token && token[0] == '{') {
+            processos[*total].id_classe = atoi(token + 1); // Ignora '{'
         }
 
         token = strtok(NULL, ",");
-        processos[*total].ano_eleicao = atoi(token);
+        processos[*total].qtd_assuntos = 0;
+        if (token) {
+            char *ptr = strtok(token, "{}");
+            while (ptr && processos[*total].qtd_assuntos < MAX_ASSUNTOS) {
+                processos[*total].id_assunto[processos[*total].qtd_assuntos++] = atoi(ptr);
+                ptr = strtok(NULL, "{}");
+            }
+        }
+
+        token = strtok(NULL, ",");
+        if (token) {
+            processos[*total].ano_eleicao = atoi(token);
+        }
 
         (*total)++;
     }
 
     fclose(arquivo);
     printf("Arquivo carregado com sucesso! Total de processos: %d\n", *total);
-    return 1; // Retorna 1 para indicar sucesso
-    }
+    return 1;
+}
 
 void ordenar_por_id(Processo processos[], int total) {
     for (int i = 0; i < total - 1; i++) {
@@ -86,13 +97,58 @@ void ordenar_por_data(Processo processos[], int total) {
     printf("Processos ordenados por data de ajuizamento (decrescente).\n");
 }
 
+int contar_por_classe(Processo processos[], int total, int id_classe) {
+    int contador = 0;
+    for (int i = 0; i < total; i++) {
+        if (processos[i].id_classe == id_classe) {
+            contador++;
+        }
+    }
+    return contador;
+}
+
+int contar_assuntos_unicos(Processo processos[], int total) {
+    int assuntos[MAX_ASSUNTOS * total];
+    int qtd_assuntos = 0;
+
+    for (int i = 0; i < total; i++) {
+        for (int j = 0; j < processos[i].qtd_assuntos; j++) {
+            int assunto = processos[i].id_assunto[j];
+            int encontrado = 0;
+            for (int k = 0; k < qtd_assuntos; k++) {
+                if (assuntos[k] == assunto) {
+                    encontrado = 1;
+                    break;
+                }
+            }
+            if (!encontrado) {
+                assuntos[qtd_assuntos++] = assunto;
+            }
+        }
+    }
+    return qtd_assuntos;
+}
+
+void listar_multiplos_assuntos(Processo processos[], int total) {
+    printf("Processos com múltiplos assuntos:\n");
+    for (int i = 0; i < total; i++) {
+        if (processos[i].qtd_assuntos > 1) {
+            printf("ID: %d, Número: %s, Assuntos: ", processos[i].id, processos[i].numero);
+            for (int j = 0; j < processos[i].qtd_assuntos; j++) {
+                printf("%d ", processos[i].id_assunto[j]);
+            }
+            printf("\n");
+        }
+    }
+}
+
 int dias_em_tramitacao(const char *data_ajuizamento) {
     struct tm data = {0};
     if (sscanf(data_ajuizamento, "%d-%d-%d %d:%d:%d",
                &data.tm_year, &data.tm_mon, &data.tm_mday,
                &data.tm_hour, &data.tm_min, &data.tm_sec) != 6) {
-        printf("Erro ao converter data.\n");
-        return -1; // retorna um valor indicando erro
+        printf("Erro ao converter data: %s\n", data_ajuizamento);
+        return -1; // Retorna um valor indicando erro
     }
 
     // Ajusta os valores para o formato esperado por mktime
@@ -109,41 +165,32 @@ int dias_em_tramitacao(const char *data_ajuizamento) {
     double segundos = difftime(hoje, inicio); // Calcula a diferença em segundos
     return (int)(segundos / (60 * 60 * 24)); // Converte para dias
 }
-int contar_por_classe(Processo processos[], int total, int id_classe) {
-    int count = 0;
-    for (int i = 0; i < total; i++) {
-        if (processos[i].id_classe == id_classe) {
-            count++;
-        }
-    }
-    return count;
-}
 
-int contar_assuntos_unicos(Processo processos[], int total) {
-    int unicos[10000] = {0}; // suposição de IDs de assunto até 9999
+void salvar_processos_csv(Processo processos[], int total, const char* nome_arquivo) {
+    FILE *arquivo = fopen(nome_arquivo, "w");
+    if (!arquivo) {
+        printf("Erro ao abrir o arquivo para escrita: %s\n", nome_arquivo);
+        return;
+    }
+
+    fprintf(arquivo, "ID,Número,Data de Ajuizamento,Classe,Assuntos,Ano Eleição\n");
     for (int i = 0; i < total; i++) {
+        fprintf(arquivo, "%d,%s,%s,%d,\"{",
+                processos[i].id,
+                processos[i].numero,
+                processos[i].data_ajuizamento,
+                processos[i].id_classe);
+
         for (int j = 0; j < processos[i].qtd_assuntos; j++) {
-            unicos[processos[i].id_assunto[j]] = 1;
-        }
-    }
-
-    int totalUnicos = 0;
-    for (int i = 0; i < 10000; i++) {
-        totalUnicos += unicos[i];
-    }
-    return totalUnicos;
-}
-
-void listar_multiplos_assuntos(Processo processos[], int total) {
-    printf("Processos com múltiplos assuntos:\n");
-    for (int i = 0; i < total; i++) {
-        if (processos[i].qtd_assuntos > 1) {
-            printf("ID: %d | Número: %s | Assuntos: ", processos[i].id, processos[i].numero);
-            for (int j = 0; j < processos[i].qtd_assuntos; j++) {
-                printf("%d ", processos[i].id_assunto[j]);
+            fprintf(arquivo, "%d", processos[i].id_assunto[j]);
+            if (j < processos[i].qtd_assuntos - 1) {
+                fprintf(arquivo, ",");
             }
-            printf("\n");
         }
-    }
-}
 
+        fprintf(arquivo, "}\",%d\n", processos[i].ano_eleicao);
+    }
+
+    fclose(arquivo);
+    printf("Processos salvos com sucesso no arquivo: %s\n", nome_arquivo);
+}
