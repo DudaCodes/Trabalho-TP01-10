@@ -5,7 +5,12 @@
 #define NOME_ARQUIVO "processo_043_202409032338.csv"
 
 int main() {
-    Processo processos[MAX_PROCESSOS];  // Definindo o tamanho máximo de processos
+    Processo *processos = malloc(MAX_PROCESSOS * sizeof(Processo));
+    if(!processos){
+        printf("Erro: Falha ao alocar memória para os processos.\n");
+        return 1; // Retorna erro se não conseguir alocar memória       
+    }  
+
     int total = 0;  
     int opcao;  
 
@@ -128,4 +133,5 @@ int main() {
     } while(opcao != 0);  // Continua até o usuário escolher sair
 
     return 0;
+    free(processos);  
 }
